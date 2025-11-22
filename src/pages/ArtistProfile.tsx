@@ -4,7 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Artist, Package, Service } from '../types';
 import { mockArtists } from '../mock/artists';
-import { DollarSign, Tag, Users, Package as PackageIcon } from 'lucide-react';
+import { DollarSign, Tag, Package as PackageIcon } from 'lucide-react';
 
 const ArtistProfile = () => {
   const { id } = useParams<{ id: string }>();

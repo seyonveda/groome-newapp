@@ -1,13 +1,14 @@
 // src/components/BannerCarousel.tsx
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "../lib/supabaseClient"; // matches your screenshot
-import { getPublicUrl } from "../lib/storage"; // matches your screenshot
+import { supabase } from "../lib/supabaseClient";
+import { getPublicUrl } from "../lib/storage";
 import { useNavigate } from "react-router-dom";
 
-type BannerRecord = {
+// Type describing a row in your "banners" table
+export type BannerRecord = {
   id: number;
   title?: string | null;
-  image_path?: string | null; // path stored in supabase storage
+  image_path?: string | null;
   target_url?: string | null;
   start_at?: string | null;
   end_at?: string | null;
@@ -16,10 +17,16 @@ type BannerRecord = {
   metadata?: any | null;
 };
 
+// Type for what UI actually needs
+type BannerUI = {
+  id: number;
+  title?: string | null;
+  imageUrl: string;
+  target_url?: string | null;
+};
+
 export default function BannerCarousel() {
-  const [banners, setBanners] = useState<
-    Array<{ id: number; title?: string | null; imageUrl: string; target_url?: string | null }>
-  >([]);
+  const [banners, setBanners] = useState<BannerUI[]>([]);
   const [index, setIndex] = useState(0);
   const navigate = useNavigate();
   const intervalRef = useRef<number | null>(null);
@@ -29,7 +36,6 @@ export default function BannerCarousel() {
 
     async function loadBanners() {
       try {
-        // Adjust table name / filters as needed. This fetches active banners ordered by position.
         const { data, error } = await supabase
           .from("banners")
           .select("*")
@@ -40,40 +46,39 @@ export default function BannerCarousel() {
           console.error("Error loading banners:", error);
           return;
         }
-
         if (!mounted || !data) return;
 
-        // Convert storage path -> public URL using your helper
+        // Treat rows as BannerRecord[]
+        const rows = data as BannerRecord[];
+
+        // Convert storage path -> public URL
         const mapped = await Promise.all(
-          data.map(async (b) => {
-            // If image_path is already a full URL, keep it.
+          rows.map(async (b: BannerRecord): Promise<BannerUI> => {
             const rawPath = b.image_path ?? "";
             let imageUrl = "";
 
-            // If helper exists and expects (bucket, path) or (path) adjust accordingly.
-            // Here we assume image_path is like "banners/2025/abc.jpg" and getPublicUrl(path) returns a full url.
             try {
+              // your helper getPublicUrl("banners/2025/abc.jpg")
               imageUrl = rawPath ? await getPublicUrl(rawPath) : "";
-            } catch (err) {
-              // fallback: if helper throws or not available, try to build from supabase storage
+            } catch {
               try {
                 const { data: urlData } = supabase.storage.from("banners").getPublicUrl(rawPath);
                 imageUrl = urlData?.publicUrl ?? "";
-              } catch (e) {
-                imageUrl = rawPath; // fallback to whatever is stored
+              } catch {
+                imageUrl = rawPath;
               }
             }
 
             return {
               id: b.id,
               title: b.title ?? null,
-              imageUrl: imageUrl || "",
+              imageUrl: imageUrl,
               target_url: b.target_url ?? null,
             };
           })
         );
 
-        setBanners(mapped.filter((m) => m.imageUrl));
+        setBanners(mapped.filter((m) => m.imageUrl)); // keep only banners with proper URLs
       } catch (err) {
         console.error("Unexpected error loading banners:", err);
       }
@@ -86,9 +91,8 @@ export default function BannerCarousel() {
     };
   }, []);
 
-  // Auto-advance every 5s
+  // Auto slide
   useEffect(() => {
-    // clear existing
     if (intervalRef.current) {
       window.clearInterval(intervalRef.current);
     }
@@ -107,27 +111,15 @@ export default function BannerCarousel() {
     };
   }, [banners]);
 
-  const goPrev = () => {
-    setIndex((i) => (i - 1 + banners.length) % banners.length);
-  };
-  const goNext = () => {
-    setIndex((i) => (i + 1) % banners.length);
-  };
-
+  const goPrev = () => setIndex((i) => (i - 1 + banners.length) % banners.length);
+  const goNext = () => setIndex((i) => (i + 1) % banners.length);
   const onClickBanner = (targetUrl?: string | null) => {
     if (!targetUrl) return;
-    // If targetUrl is an internal route (starts with /) use navigate
-    if (targetUrl.startsWith("/")) {
-      navigate(targetUrl);
-    } else {
-      // otherwise open in new tab
-      window.open(targetUrl, "_blank");
-    }
+    if (targetUrl.startsWith("/")) navigate(targetUrl);
+    else window.open(targetUrl, "_blank");
   };
 
-  if (!banners.length) {
-    return null; // or a placeholder skeleton
-  }
+  if (!banners.length) return null;
 
   return (
     <div className="banner-carousel" style={{ position: "relative", overflow: "hidden" }}>
@@ -152,7 +144,6 @@ export default function BannerCarousel() {
               background: "#000",
             }}
             onClick={() => onClickBanner(b.target_url)}
-            role={b.target_url ? "link" : undefined}
           >
             <img
               src={b.imageUrl}
@@ -163,9 +154,9 @@ export default function BannerCarousel() {
         ))}
       </div>
 
-      {/* Prev / Next */}
       {banners.length > 1 && (
         <>
+          {/* Prev button */}
           <button
             aria-label="Previous banner"
             onClick={goPrev}
@@ -184,6 +175,7 @@ export default function BannerCarousel() {
             ◀
           </button>
 
+          {/* Next button */}
           <button
             aria-label="Next banner"
             onClick={goNext}
@@ -204,7 +196,7 @@ export default function BannerCarousel() {
         </>
       )}
 
-      {/* Dots */}
+      {/* Slide dots */}
       {banners.length > 1 && (
         <div
           style={{
