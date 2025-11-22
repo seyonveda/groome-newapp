@@ -1,19 +1,41 @@
 // src/lib/storage.ts
-import supabase from "./supabaseClient";
+import supabase from './supabaseClient'
 
-const DEFAULT_BUCKET = "banners"; // change to your bucket
+const KNOWN_BUCKETS = new Set([
+  'brands',
+  'banners',
+  'product-images',
+  'artist-gallery',
+  'profile-images',
+  // add more bucket names here if you create them
+])
 
-export async function getPublicUrl(path?: string | null, bucket = DEFAULT_BUCKET) {
-  if (!path) return "";
-  // if path already contains a full url, return it:
-  if (/^https?:\/\//i.test(path)) return path;
+export const getPublicUrl = (rawPath: string | null, defaultBucket = 'banners') => {
+  if (!rawPath) return null
 
-  try {
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    // data.publicUrl is the v2 shape; check console if different in your SDK version
-    return data?.publicUrl ?? "";
-  } catch (err) {
-    console.error("getPublicUrl error:", err);
-    return "";
+  // If the path already includes bucket as first segment, use it.
+  // Example rawPath: "artist-gallery/john.jpg" => bucket='artist-gallery', path='john.jpg'
+  let bucket = defaultBucket
+  let path = rawPath
+
+  const firstSep = rawPath.indexOf('/')
+  if (firstSep > 0) {
+    const maybeBucket = rawPath.slice(0, firstSep)
+    const remainder = rawPath.slice(firstSep + 1)
+    if (KNOWN_BUCKETS.has(maybeBucket)) {
+      bucket = maybeBucket
+      path = remainder
+    }
   }
+
+  const res = supabase.storage.from(bucket).getPublicUrl(path)
+
+  // support both SDK shapes
+  const publicUrl =
+    (res && (res as any).data && (res as any).data.publicUrl) ||
+    (res && (res as any).publicURL) ||
+    null
+
+  console.log('[DEBUG getPublicUrl] bucket=', bucket, 'path=', path, '->', publicUrl)
+  return publicUrl
 }
